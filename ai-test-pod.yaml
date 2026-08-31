@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: checkout-payment-service
+  labels:
+    app: checkout-payment-service
+spec:
+  containers:
+  - name: service
+    image: busybox:latest
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        while true; do
+          ts=$(date -u +"%Y-%m-%d %H:%M:%S")
+          echo "[$ts] [WARN] GC overhead limit approaching: memory usage climbing steadily at 82%"
+          echo "[$ts] [ERROR] DBPoolExhausted: Pool capacity 50/50 reached for /api/v1/checkout"
+          echo "[$ts] [FATAL] TransactionTimeoutException: downstream payment gateway timed out after 30000ms"
+          sleep 2
+        done

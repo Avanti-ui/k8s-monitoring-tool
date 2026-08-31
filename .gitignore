@@ -21,3 +21,30 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+
+### Python ###
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+### Environment files ###
+.env
+.env.local
+.env.*.local
+
+### Node ###
+node_modules/
+frontend/dist/
+
+### Misc ###
+*.log
+.DS_Store

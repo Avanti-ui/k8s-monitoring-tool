@@ -1,0 +1,266 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+# -------------------------------------------------------------
+# MongoDB StatefulSet & Service
+# -------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: monitoring
+  labels:
+    app: mongodb
+spec:
+  ports:
+    - port: 27017
+      targetPort: 27017
+      name: mongodb
+  clusterIP: None
+  selector:
+    app: mongodb
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: monitoring
+spec:
+  serviceName: "mongodb"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:7.0
+          ports:
+            - containerPort: 27017
+              name: mongodb
+          volumeMounts:
+            - name: mongo-storage
+              mountPath: /data/db
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-storage
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi
+---
+# -------------------------------------------------------------
+# Backend ConfigMap & Secret
+# -------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-monitor-backend-config
+  namespace: monitoring
+data:
+  HOST: "0.0.0.0"
+  PORT: "4000"
+  DEBUG: "false"
+  MONGO_URI: "mongodb://mongodb.monitoring.svc.cluster.local:27017/k8s-monitor"
+  PROMETHEUS_URL: "http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+  LOKI_URL: "http://loki.monitoring.svc.cluster.local:3100"
+  RULE_ENGINE_INTERVAL_MS: "30000"
+  AI_ENABLED: "true"
+  AI_PROVIDER: "groq"
+  AI_MODEL: "llama-3.3-70b-versatile"
+  AI_ANALYSIS_INTERVAL_MS: "180000"
+  EXCLUDE_SYSTEM_NAMESPACES: "true"
+  CORS_ORIGINS: "*"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: k8s-monitor-secrets
+  namespace: monitoring
+type: Opaque
+stringData:
+  JWT_SECRET: "replace-with-a-secure-random-32-byte-secret-key"
+  GROQ_API_KEY: ""
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  AZURE_OPENAI_API_KEY: ""
+  AZURE_OPENAI_ENDPOINT: ""
+  SLACK_WEBHOOK_URL_ALERTS: ""
+  SLACK_WEBHOOK_URL_AI_ANALYSIS: ""
+---
+# -------------------------------------------------------------
+# RBAC for Backend Cluster Discovery & Metrics
+# -------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-monitor-backend-sa
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-monitor-backend-role
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods", "namespaces", "services", "endpoints", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-monitor-backend-binding
+subjects:
+  - kind: ServiceAccount
+    name: k8s-monitor-backend-sa
+    namespace: monitoring
+roleRef:
+  kind: ClusterRole
+  name: k8s-monitor-backend-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# -------------------------------------------------------------
+# Backend Deployment & Service
+# -------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-monitor-backend
+  namespace: monitoring
+  labels:
+    app: k8s-monitor-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-monitor-backend
+  template:
+    metadata:
+      labels:
+        app: k8s-monitor-backend
+    spec:
+      serviceAccountName: k8s-monitor-backend-sa
+      containers:
+        - name: backend
+          image: YOUR_REGISTRY/k8s-monitor-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: k8s-monitor-backend-config
+            - secretRef:
+                name: k8s-monitor-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-monitor-backend
+  namespace: monitoring
+  labels:
+    app: k8s-monitor-backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4000
+      targetPort: 4000
+      name: http
+  selector:
+    app: k8s-monitor-backend
+---
+# -------------------------------------------------------------
+# Frontend Deployment & Service
+# -------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-monitor-frontend
+  namespace: monitoring
+  labels:
+    app: k8s-monitor-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-monitor-frontend
+  template:
+    metadata:
+      labels:
+        app: k8s-monitor-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: YOUR_REGISTRY/k8s-monitor-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-monitor-frontend
+  namespace: monitoring
+  labels:
+    app: k8s-monitor-frontend
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+      name: http
+  selector:
+    app: k8s-monitor-frontend

@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: k8s-monitor-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - monitor-net
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: k8s-monitor-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - monitor-net
+
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: k8s-monitor-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - monitor-net
+
+  k8s-monitor-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: k8s-monitor-backend
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - prometheus
+      - loki
+    environment:
+      - HOST=0.0.0.0
+      - PORT=4000
+      - MONGO_URI=mongodb://mongodb:27017/k8s-monitor
+      - PROMETHEUS_URL=http://prometheus:9090
+      - LOKI_URL=http://loki:3100
+      - JWT_SECRET=${JWT_SECRET:-super-secret-k8s-monitor-jwt-key-2026}
+      - AI_ENABLED=${AI_ENABLED:-true}
+      - AI_PROVIDER=${AI_PROVIDER:-groq}
+      - AI_MODEL=${AI_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+      - SLACK_WEBHOOK_URL_ALERTS=${SLACK_WEBHOOK_URL_ALERTS:-}
+      - SLACK_WEBHOOK_URL_AI_ANALYSIS=${SLACK_WEBHOOK_URL_AI_ANALYSIS:-}
+      - CORS_ORIGINS=*
+    volumes:
+      - ~/.kube:/root/.kube:ro
+    networks:
+      - monitor-net
+
+  k8s-monitor-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: k8s-monitor-frontend
+    restart: unless-stopped
+    depends_on:
+      - k8s-monitor-backend
+    ports:
+      - "80:80"
+    networks:
+      - monitor-net
+
+volumes:
+  mongo_data:
+  prometheus_data:
+  loki_data:
+
+networks:
+  monitor-net:
+    driver: bridge

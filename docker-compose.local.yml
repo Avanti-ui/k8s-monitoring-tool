@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: k8s-monitor-mongo
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: k8s-monitor-prometheus
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: k8s-monitor-loki
+    ports:
+      - '3100:3100'
+    command: -config.file=/etc/loki/local-config.yaml
+
+volumes:
+  mongo_data:

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-logger
+  labels:
+    app: demo-logger
+spec:
+  containers:
+  - name: logger
+    image: busybox:latest
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        i=1
+        while true; do
+          ts=$(date -u +"%Y-%m-%d %H:%M:%S")
+          case $((i % 4)) in
+            0) echo "[$ts] [ERROR] InternalServerError: Payment gateway timeout (retry: $i)" ;;
+            1) echo "[$ts] [INFO] Request received: GET /api/v1/users (status: 200, latency: 12ms)" ;;
+            2) echo "[$ts] [INFO] Database query executed: SELECT * FROM pods WHERE active=true" ;;
+            3) echo "[$ts] [WARN] Memory consumption elevated: 78% utilized on node-worker" ;;
+          esac
+          i=$((i + 1))
+          sleep 1
+        done

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: order-processing-service
+  labels:
+    app: order-processing-service
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "[INFO] Order processing service v3.2.0 initialized"
+        while true; do
+          ts=$(date -u +"%Y-%m-%d %H:%M:%S")
+          echo "[$ts] [WARN] JVM heap allocation climbing: 88% capacity used"
+          echo "[$ts] [ERROR] RedisConnectionException: Connection refused on redis-cluster:6379"
+          echo "[$ts] [CRITICAL] DeadlockDetected: Thread-42 and Thread-88 deadlocked on Lock(order_id_seq)"
+          echo "[$ts] [ERROR] HTTP 504 Gateway Timeout while processing /api/v2/orders/checkout"
+          sleep 2
+        done

@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #0a0b0d;
+  --bg-surface: #111318;
+  --bg-surface-hover: #171a21;
+  --bg-surface-card: #13151b;
+  --border: rgba(255, 255, 255, 0.08);
+  --text-primary: #e8e9eb;
+  --text-secondary: #8b8d93;
+  --accent: #00e599;
+  --accent-hover: #00c985;
+  --accent-muted: rgba(0, 229, 153, 0.12);
+  --status-critical: #f04438;
+  --status-warning: #f79009;
+  --status-healthy: #12b76a;
+  --status-neutral: #8b8d93;
+}
+
+@layer base {
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    overflow-x: hidden;
+  }
+
+  /* Accessible visible focus ring */
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* Tabular figures and mono numbers */
+.font-mono {
+  font-family: 'JetBrains Mono', 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle 150ms transition for live updating metrics */
+@media (prefers-reduced-motion: no-preference) {
+  .metric-transition {
+    transition: color 150ms ease-out, background-color 150ms ease-out, opacity 150ms ease-out;
+  }
+}
+
+/* Custom minimal scrollbars for logs and tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
