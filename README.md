@@ -213,5 +213,11 @@ kubectl port-forward svc/ecommerce-service 8080:8080
 
 ---
 
+## 👤 Author
+
+**Avanti Nandanwar** — [@Avanti-ui](https://github.com/Avanti-ui)
+
+---
+
 ## 📄 License
 This project is licensed under the Apache 2.0 License.
