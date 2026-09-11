@@ -1,6 +1,6 @@
 import { PodMetric, MetricHistoryPoint, LogEntry, NodeMetric, AlertItem } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 async function fetchWithAuth<T>(
   endpoint: string,
