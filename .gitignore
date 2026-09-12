@@ -48,3 +48,6 @@ frontend/dist/
 ### Misc ###
 *.log
 .DS_Store
+CLOUD_DEPLOYMENT_GUIDE.md
+HOW_TO_SETUP.md
+VM_DEPLOYMENT_GUIDE.md
