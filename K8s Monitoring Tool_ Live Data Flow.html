@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>K8s Monitoring Tool: Live Data Flow</title>
+<style>
+:root{
+  --bg:#f6f7f9;--surface:#fff;--text:#1b1f27;--muted:#5b6472;--border:#d9dde5;--c1:#2f6fed;--c2:#7c4dff;--c3:#0d9f6e;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--bg:#12151b;--surface:#1b2028;--text:#e8ebf0;--muted:#98a2b3;--border:#2c333e;--c1:#6c9bff;--c2:#a58bff;--c3:#3ccf97;color-scheme:dark}
+}
+:root[data-theme="dark"]{--bg:#12151b;--surface:#1b2028;--text:#e8ebf0;--muted:#98a2b3;--border:#2c333e;--c1:#6c9bff;--c2:#a58bff;--c3:#3ccf97;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+main{max-width:1180px;margin:0 auto;padding:22px 16px 40px}
+h1{font-size:1.55rem;margin:0 0 4px;font-weight:700;display:flex;align-items:center;gap:10px}
+.sub{margin:0 0 16px;color:var(--muted);font-size:.93rem}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+button{font:inherit;font-size:.9rem;padding:7px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;transition:all .15s ease}
+button:hover{border-color:var(--muted)}
+.tabs button[aria-pressed="true"]{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:600}
+#start{background:var(--b,var(--c1));color:#fff;border-color:transparent;font-weight:600;padding:8px 22px}
+#start:hover{opacity:.92}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}
+.arch-card{margin-bottom:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden}
+.arch-card summary{font-weight:600;font-size:.95rem;padding:12px 16px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;list-style:none}
+.arch-card summary::-webkit-details-marker{display:none}
+.arch-card summary .hint{font-size:.8rem;color:var(--muted);font-weight:400}
+.arch-img-wrap{padding:0 16px 16px;text-align:center}
+.arch-img-wrap a{display:inline-block;max-width:100%}
+.arch-img-wrap img{width:100%;max-height:480px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#12151b;transition:transform .2s ease,box-shadow .2s ease}
+.arch-img-wrap img:hover{box-shadow:0 6px 20px rgba(0,0,0,.15)}
+.arch-img-wrap p{margin:10px 0 0;font-size:.82rem;color:var(--muted)}
+
+.flow-wrap{position:relative;overflow-x:auto;padding:18px 14px}
+.flow-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1}
+.grid{display:grid;grid-template-columns:repeat(5,minmax(165px,1fr));gap:16px;min-width:860px;position:relative;z-index:2}
+.col h3{font-size:.74rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;font-weight:700}
+.col{display:flex;flex-direction:column;gap:12px;position:relative}
+.col+.col::before{content:"→";position:absolute;left:-14px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:700;font-size:1.1rem;opacity:.5}
+
+.node{border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--surface);transition:opacity .25s,box-shadow .25s,border-color .25s;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.03)}
+.node b{display:block;font-size:.86rem;margin-bottom:2px}
+.node span{font-size:.75rem;color:var(--muted);display:block;line-height:1.35}
+.grid.focus .node{opacity:.3}
+.grid.focus .node.seen{opacity:.95;border-color:var(--b);background:color-mix(in srgb,var(--b) 5%,var(--surface))}
+.grid.focus .node.cur{opacity:1;border-color:var(--b);box-shadow:0 0 0 4px color-mix(in srgb,var(--b) 35%,transparent);animation:pulse 1s ease-in-out infinite;background:color-mix(in srgb,var(--b) 10%,var(--surface))}
+@keyframes pulse{50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--b) 12%,transparent)}}
+@media (prefers-reduced-motion: reduce){.node{animation:none!important}}
+.node .badge{position:absolute;top:-8px;right:-6px;background:var(--b);color:#fff;font-size:.68rem;font-weight:700;border-radius:999px;min-width:20px;height:20px;display:none;place-items:center;padding:0 6px;box-shadow:0 2px 4px rgba(0,0,0,.2)}
+.node.seen .badge{display:grid}
+
+.banner{margin-top:14px;border-left:4px solid var(--b,var(--c1));padding:14px 16px}
+.banner-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.banner h2{margin:0;font-size:1.05rem;font-weight:700}
+.banner-badge{font-size:.75rem;padding:3px 8px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-weight:600}
+.banner p{margin:6px 0 0;font-size:.9rem;color:var(--text)}
+.payload-box{margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:.8rem;color:var(--text);overflow-x:auto;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.payload-box code{white-space:pre-wrap;word-break:break-all}
+.copy-btn{font-size:.74rem;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;flex-shrink:0}
+.copy-btn:hover{color:var(--text);border-color:var(--text)}
+
+.bar{height:5px;background:var(--border);border-radius:999px;margin-top:12px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--b,var(--c1));transition:width .3s}
+
+.steps{margin:14px 0 0;padding:0;list-style:none;display:grid;gap:8px}
+.steps li{display:grid;grid-template-columns:30px 1fr;gap:12px;font-size:.88rem;opacity:.45;transition:opacity .2s;align-items:start}
+.steps li.seen{opacity:1}
+.steps li.cur-step{background:color-mix(in srgb,var(--b) 8%,transparent);padding:6px 8px;border-radius:8px;margin:-6px -8px}
+.steps .num{width:26px;height:26px;border-radius:50%;background:var(--b);color:#fff;display:grid;place-items:center;font-weight:700;font-size:.75rem;box-shadow:0 2px 4px rgba(0,0,0,.15)}
+.steps small{display:block;color:var(--muted);font-size:.78rem;margin-top:2px}
+.controls-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.speed-wrap{display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted)}
+.speed-wrap select{font:inherit;font-size:.82rem;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+</style>
+</head>
+<body>
+<main>
+  <h1><span>☸️</span> K8s Monitoring Tool: Live Data Flow</h1>
+  <p class="sub">Autonomous AI Observability & Monitoring Platform. Select a scenario and press Start to watch live data stream through the system architecture.</p>
+
+  <!-- Architecture & Flow Overview Card -->
+  <details class="arch-card" open>
+    <summary>
+      <span>🗺️ Architecture & Flow Overview (5-Stage Pipeline)</span>
+      <span class="hint">Click to collapse/expand ▾</span>
+    </summary>
+    <div class="arch-img-wrap">
+      <a href="docs/assets/architecture-flow.jpg" target="_blank" title="Click to view full resolution in a new tab">
+        <img src="docs/assets/architecture-flow.jpg" alt="Kubernetes AI Monitoring and Observability Platform Architecture & Live Data Flow">
+      </a>
+      <p><b>Stage 1:</b> Workload (Pods/Logs) → <b>Stage 2:</b> Telemetry Ingestion (Prometheus/Loki) → <b>Stage 3:</b> FastAPI Core (Rule &amp; AI Engines) → <b>Stage 4:</b> Intelligence &amp; Store (LLM/MongoDB) → <b>Stage 5:</b> Dispatch &amp; Delivery (Slack, Email &amp; Dashboard)</p>
+    </div>
+  </details>
+
+  <!-- Scenario Tabs -->
+  <div class="row tabs" id="tabs"></div>
+
+  <!-- Flow Simulation Controls -->
+  <div class="controls-row">
+    <div class="row" style="margin:0">
+      <button id="start">▶ Start</button>
+      <button id="step">Step ›</button>
+      <button id="reset">Reset</button>
+    </div>
+    <div class="speed-wrap">
+      <span>Flow Speed:</span>
+      <select id="speed">
+        <option value="2200">0.7x (Slow)</option>
+        <option value="1600" selected>1.0x (Normal)</option>
+        <option value="1000">1.6x (Fast)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Interactive 5-Column Grid with Dynamic SVG Flow Paths -->
+  <div class="card flow-wrap" id="flow-wrap">
+    <svg id="flow-svg" class="flow-svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--b, #2f6fed)"/>
+        </marker>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+      <g id="flow-paths"></g>
+    </svg>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <!-- Live Step Banner with Formatted Payload Inspector -->
+  <div class="card banner" id="banner">
+    <div class="banner-head">
+      <h2 id="bt">Scenario Ready</h2>
+      <span class="banner-badge" id="btype">Payload Inspector</span>
+    </div>
+    <p id="bd">Select a flow scenario and press Start to follow the telemetry packet.</p>
+    <div class="payload-box">
+      <code id="bp">// payload stream data will appear here</code>
+      <button class="copy-btn" id="copy-btn" title="Copy to clipboard">Copy</button>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+  </div>
+
+  <!-- Sequence Trace List -->
+  <div class="card" style="margin-top:14px">
+    <h3 style="margin:0 0 10px; font-size:.86rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted)">Sequence Trace Pipeline</h3>
+    <ol class="steps" id="steps"></ol>
+  </div>
+</main>
+
+<script>
+// 5 Logically Sequenced Pipeline Stages matching System Architecture
+var COLS = [
+  ["1 · Workloads", [
+    ["pods", "Kubernetes Pods", "Application containers & cAdvisor"],
+    ["nodes", "Cluster Fleet", "Node Exporter & Kubelet stats"]
+  ]],
+  ["2 · Ingestion Layer", [
+    ["prom", "Prometheus TSDB", "Scrapes metrics every 15s · :9090"],
+    ["loki", "Grafana Loki", "Streams pod error logs · :3100"]
+  ]],
+  ["3 · FastAPI Core (:4000)", [
+    ["rule", "Rule Engine", "30s threshold watchdog loop"],
+    ["ai", "AI Engine", "30–60s log & metric correlation"],
+    ["api", "REST & WebSockets","/api/alerts, /ws/alerts"]
+  ]],
+  ["4 · Intelligence & Store", [
+    ["llm", "Cognitive LLM", "Groq / OpenAI / Claude SRE doctor"],
+    ["mongo", "MongoDB (:27017)", "Alerts, user pool & audit records"]
+  ]],
+  ["5 · Dispatch & Delivery", [
+    ["slack", "Slack Channels", "#k8s-alerts & #k8s-ai-insights"],
+    ["email", "SMTP Mail Server", "STARTTLS / SSL email to on-call"],
+    ["ui", "React Dashboard", "Vite :3000 real-time operations"]
+  ]]
+];
+
+var FLOWS = [
+  {
+    id: "rule",
+    name: "1. Rule Alert Flow (/crash, /cpu-stress)",
+    color: "var(--c1)",
+    steps: [
+      ["pods", "Demo pod misbehaves", "Trigger /cpu-stress or /crash on application", "JSON", '{\n  "pod": "order-service-7f8d-x92",\n  "namespace": "production",\n  "cpu_percent": 91.4,\n  "restart_count": 3,\n  "status": "CrashLoopBackOff"\n}'],
+      ["prom", "Prometheus scrapes container metrics", "cAdvisor collects CPU, RAM, and restarts every 15s", "PromQL", 'container_cpu_usage_seconds_total{namespace="production", pod="order-service-7f8d-x92"} > 0.80\n# Metric: 91.4% CPU breach detected (Threshold: 80.0%)'],
+      ["rule", "Rule Engine watchdog evaluates breach", "rule_engine.py evaluates thresholds every 30s loop", "Rule", 'RULE_EVAL: HIGH_CPU\nCondition: actual (91.4%) > threshold (80.0%)\nAction: Generate active alert payload & trigger multi-channel dispatch'],
+      ["mongo", "Alert is deduplicated and saved", "Keyed by pod::rule and marked active in MongoDB", "MongoDB", 'db.alerts.updateOne(\n  { "fingerprint": "order-service-7f8d-x92::HIGH_CPU" },\n  { "$set": { "severity": "CRITICAL", "status": "active", "updated_at": "2026-10-28T22:54:00Z" } },\n  { "upsert": true }\n)'],
+      ["slack", "Slack Block Kit alert posted", "Sent asynchronously to #k8s-alerts webhook", "Block Kit", 'POST https://hooks.slack.com/services/...\n{\n  "channel": "#k8s-alerts",\n  "blocks": [\n    { "type": "header", "text": { "text": "🚨 [CRITICAL] High CPU: order-service" } },\n    { "type": "section", "fields": [{ "text": "*Pod:* order-service" }, { "text": "*Usage:* 91.4%" }] }\n  ]\n}'],
+      ["email", "SMTP email dispatched to on-call team", "Merged user pool from DB sent STARTTLS 587 off main thread", "SMTP", 'MAIL FROM: <alerts@k8s-monitor.local>\nRCPT TO: <oncall-sre@company.com>\nSubject: [CRITICAL ALERT] order-service High CPU (91.4%)\nContent-Type: multipart/alternative (HTML + Plain text) -> 250 OK: Queued']
+    ]
+  },
+  {
+    id: "ai",
+    name: "2. Autonomous AI Diagnosis Flow (/payment)",
+    color: "var(--c2)",
+    steps: [
+      ["pods", "Demo pod leaks memory", "Payment endpoint retains memory & emits 504 timeouts", "JSON", '{\n  "endpoint": "/payment",\n  "heap_used_mb": 1485,\n  "heap_limit_mb": 1500,\n  "http_status": 504,\n  "error": "java.lang.OutOfMemoryError: Java heap space"\n}'],
+      ["prom", "AI Engine snapshots pod telemetry", "Collects CPU, memory saturation and restart telemetry", "Prometheus", 'SNAPSHOT_TELEMETRY:\n  pod: payment-api-6b4f-89q\n  memory_working_set: 1.48GB / 1.50GB (98.6%)\n  restart_count: 2 (BackOff 40s)'],
+      ["loki", "AI Engine pulls error logs via LogQL", "Pulls top critical error lines (oom, panic, 500, timeout)", "LogQL", '{app="payment-service"} |= "error" | json\n# Log excerpt:\n"2026-10-28 22:54:12 ERROR [pool-3] OutOfMemoryError: unable to allocate 16384 bytes in heap"\n"2026-10-28 22:54:13 WARN [gateway] HTTP 504 Gateway Timeout on /payment/checkout"'],
+      ["ai", "Metrics and logs bundled into SRE prompt", "Builds system prompt every 30-60s for LLM analysis", "AI Prompt", '{\n  "role": "system",\n  "content": "You are a Kubernetes SRE specialist. Diagnose root cause and provide exact kubectl fix.",\n  "telemetry": { "cpu": "34%", "memory": "98.6%", "restarts": 2 },\n  "logs": ["OutOfMemoryError in heap", "504 Gateway Timeout"]\n}'],
+      ["llm", "Cognitive LLM performs diagnosis", "Groq Llama 3.1 or OpenAI GPT-4o generates root cause and fix", "LLM Output", '{\n  "root_cause": "Memory leak in /payment session cache holding 15MB/request without GC clearance.",\n  "severity": "CRITICAL",\n  "remediation_cmd": "kubectl rollout restart deployment/payment-service -n production",\n  "recommended_limit": "2Gi"\n}'],
+      ["mongo", "AI diagnostic report persisted", "Saved to MongoDB with finding, root cause, and kubectl command", "MongoDB", 'db.ai_findings.insertOne({\n  "pod": "payment-api-6b4f-89q",\n  "root_cause": "Session cache memory leak",\n  "kubectl_fix": "kubectl rollout restart deployment/payment-service",\n  "created_at": ISODate()\n})'],
+      ["slack", "AI Card posted to #k8s-ai-insights", "Includes root cause breakdown & copyable kubectl code block", "Block Kit", 'POST https://hooks.slack.com/services/...\n{\n  "channel": "#k8s-ai-insights",\n  "blocks": [\n    { "type": "header", "text": { "text": "🤖 AI Diagnosis: Memory Leak on payment-service" } },\n    { "type": "section", "text": { "text": "*Root Cause:* Session cache retention.\\n*Run Fix:* `kubectl rollout restart deployment payment-service`" } }\n  ]\n}'],
+      ["email", "Rich HTML post-mortem email delivered", "Dispatches formatted HTML post-mortem directly to inboxes", "SMTP", 'SMTP 250 OK: Sent multipart/alternative message\nSubject: 🤖 [AI Root Cause Report] payment-service OutOfMemory\nBody: Embedded dark-mode HTML table with metrics snapshot and copyable kubectl fix']
+    ]
+  },
+  {
+    id: "ui",
+    name: "3. Operator Dashboard Flow (React + WebSockets)",
+    color: "var(--c3)",
+    steps: [
+      ["ui", "Operator opens React Dashboard", "Browser loads Vite app (:3000) and queries active fleet state", "HTTP REST", 'GET /api/alerts?status=active HTTP/1.1\nHost: localhost:4000\nAuthorization: Bearer eyJhbGciOiJIUzI1NiIsIn...\nAccept: application/json'],
+      ["api", "FastAPI routes and validates JWT", "Validates token & queries internal database & cluster scanner", "FastAPI", 'INFO: 127.0.0.1 - "GET /api/alerts HTTP/1.1" 200 OK\nAuth: user="sre_admin" role="cluster_operator"\nRoute: /app/api/alerts.py -> DatabaseService'],
+      ["mongo", "Active incidents & audit logs retrieved", "Async Motor driver pulls active alerts & AI findings", "MongoDB", 'db.alerts.find({ "status": "active" }).sort({ "created_at": -1 })\n# Result: 2 active threshold alerts, 1 AI finding, 3 healthy clusters'],
+      ["api", "WebSocket stream pushes live updates", "Establishes duplex WebSocket /ws/alerts for instant push", "WebSocket", 'WebSocket Handshake 101 Switching Protocols\nSEND: {\n  "event": "ALERT_STREAM",\n  "data": { "pod": "order-service", "status": "acknowledged", "user": "sre_admin" }\n}'],
+      ["ui", "Operator acknowledges incident", "Dashboard updates sparklines & sends POST acknowledgment", "HTTP REST", 'POST /api/alerts/acknowledge HTTP/1.1\n{\n  "alert_id": "671fb02a8e41",\n  "acknowledged_by": "sre_admin",\n  "comment": "Scaled replicas to 5. Monitoring metrics recovery."\n}\nResponse: 200 OK {"status": "acknowledged"}']
+    ]
+  }
+];
+
+var $ = function(i){ return document.getElementById(i); };
+var grid = $("grid"), flowSvg = $("flow-svg"), flowPaths = $("flow-paths");
+var meta = {}, cur = null, idx = -1, timer = null;
+
+// Build Columns and Nodes
+COLS.forEach(function(c){
+  var col = document.createElement("div");
+  col.className = "col";
+  col.innerHTML = "<h3>" + c[0] + "</h3>";
+  c[1].forEach(function(n){
+    var d = document.createElement("div");
+    d.className = "node";
+    d.id = "n-" + n[0];
+    d.innerHTML = '<i class="badge"></i><b>' + n[1] + "</b><span>" + n[2] + "</span>";
+    col.appendChild(d);
+    meta[n[0]] = n[1];
+  });
+  grid.appendChild(col);
+});
+
+function stop(){
+  clearInterval(timer);
+  timer = null;
+  $("start").textContent = (cur && idx >= cur.steps.length - 1) ? "↻ Replay" : "▶ Start";
+}
+
+function clearPaths(){
+  flowPaths.innerHTML = "";
+}
+
+function select(id){
+  stop();
+  cur = FLOWS.filter(function(f){ return f.id === id; })[0];
+  Array.prototype.forEach.call($("tabs").children, function(b){
+    b.setAttribute("aria-pressed", b.dataset.id === id);
+  });
+  document.documentElement.style.setProperty("--b", cur.color);
+  [grid, $("banner"), $("steps"), $("start")].forEach(function(e){
+    e.style.setProperty("--b", cur.color);
+  });
+  
+  // Render Steps trace
+  $("steps").innerHTML = cur.steps.map(function(s, i){
+    return '<li id="s' + i + '"><span class="num" style="--b:' + cur.color + '">' + (i + 1) + '</span><div><b>' + meta[s[0]] + '</b> — ' + s[1] + '<small>' + s[2] + '</small></div></li>';
+  }).join("");
+  
+  reset();
+}
+
+function reset(){
+  stop();
+  idx = -1;
+  grid.classList.remove("focus");
+  clearPaths();
+  
+  document.querySelectorAll(".node").forEach(function(n){
+    n.classList.remove("seen", "cur");
+    n.querySelector(".badge").textContent = "";
+    n.style.setProperty("--b", cur.color);
+  });
+  
+  document.querySelectorAll(".steps li").forEach(function(l){
+    l.classList.remove("seen", "cur-step");
+  });
+  
+  $("bt").textContent = cur.name;
+  $("btype").textContent = "Ready";
+  $("bd").textContent = "Press Start to watch data flow across " + cur.steps.length + " stages from workload origin to operator delivery.";
+  $("bp").textContent = "// payload data will stream here step-by-step";
+  $("bar").style.width = "0";
+  $("start").textContent = "▶ Start";
+}
+
+function drawConnector(fromNodeId, toNodeId){
+  var fromEl = $("n-" + fromNodeId);
+  var toEl = $("n-" + toNodeId);
+  if (!fromEl || !toEl) return;
+  
+  var wrapRect = $("flow-wrap").getBoundingClientRect();
+  var r1 = fromEl.getBoundingClientRect();
+  var r2 = toEl.getBoundingClientRect();
+  
+  var x1 = r1.left - wrapRect.left + r1.width / 2;
+  var y1 = r1.top - wrapRect.top + r1.height / 2;
+  var x2 = r2.left - wrapRect.left + r2.width / 2;
+  var y2 = r2.top - wrapRect.top + r2.height / 2;
+  
+  var dx = x2 - x1;
+  var d;
+  
+  // Fade previous active paths
+  Array.prototype.forEach.call(flowPaths.querySelectorAll(".active-path"), function(p){
+    p.classList.remove("active-path");
+    p.setAttribute("opacity", "0.3");
+  });
+  
+  if (Math.abs(dx) < 20) {
+    // Same column - vertical connecting arc
+    var arcOffset = 45;
+    d = "M " + x1 + " " + y1 + " C " + (x1 + arcOffset) + " " + y1 + ", " + (x2 + arcOffset) + " " + y2 + ", " + x2 + " " + y2;
+  } else {
+    // Left-to-right or curved return path
+    var cx1 = x1 + dx * 0.5;
+    var cy1 = y1;
+    var cx2 = x1 + dx * 0.5;
+    var cy2 = y2;
+    d = "M " + x1 + " " + y1 + " C " + cx1 + " " + cy1 + ", " + cx2 + " " + cy2 + ", " + x2 + " " + y2;
+  }
+  
+  var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", cur.color);
+  path.setAttribute("stroke-width", "3");
+  path.setAttribute("stroke-dasharray", "6 4");
+  path.setAttribute("marker-end", "url(#arrow)");
+  path.setAttribute("filter", "url(#glow)");
+  path.setAttribute("class", "active-path");
+  path.style.transition = "opacity 0.3s";
+  flowPaths.appendChild(path);
+}
+
+function advance(){
+  if (idx >= cur.steps.length - 1) {
+    stop();
+    return;
+  }
+  
+  var prevNodeId = idx >= 0 ? cur.steps[idx][0] : null;
+  idx++;
+  grid.classList.add("focus");
+  var s = cur.steps[idx];
+  
+  document.querySelectorAll(".node.cur").forEach(function(n){ n.classList.remove("cur"); });
+  document.querySelectorAll(".steps li.cur-step").forEach(function(l){ l.classList.remove("cur-step"); });
+  
+  var n = $("n-" + s[0]);
+  n.classList.add("seen", "cur");
+  var b = n.querySelector(".badge");
+  b.textContent = b.textContent ? b.textContent + "," + (idx + 1) : (idx + 1);
+  
+  var stepLi = $("s" + idx);
+  stepLi.classList.add("seen", "cur-step");
+  stepLi.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  
+  // Draw animated flow connector from previous node to current node
+  if (prevNodeId && prevNodeId !== s[0]) {
+    drawConnector(prevNodeId, s[0]);
+  }
+  
+  var from = idx ? meta[cur.steps[idx - 1][0]] : "Trigger";
+  $("bt").textContent = "Step " + (idx + 1) + " of " + cur.steps.length + ": " + from + " → " + meta[s[0]];
+  $("btype").textContent = s[3] || "Payload";
+  $("bd").textContent = s[1] + ". " + s[2] + ".";
+  $("bp").textContent = s[4] || s[3] || "// payload emitted";
+  $("bar").style.width = ((idx + 1) / cur.steps.length * 100) + "%";
+  
+  if (idx >= cur.steps.length - 1) {
+    stop();
+    $("bt").textContent += " · Complete ✓";
+  }
+}
+
+$("start").onclick = function(){
+  if (timer) {
+    stop();
+    $("start").textContent = "▶ Resume";
+    return;
+  }
+  if (idx >= cur.steps.length - 1) reset();
+  $("start").textContent = "❚❚ Pause";
+  advance();
+  var interval = parseInt($("speed").value, 10) || 1600;
+  timer = setInterval(advance, interval);
+};
+
+$("step").onclick = function(){
+  stop();
+  if (idx >= cur.steps.length - 1) reset();
+  advance();
+  if (idx < cur.steps.length - 1) $("start").textContent = "▶ Resume";
+};
+
+$("reset").onclick = reset;
+
+$("speed").onchange = function(){
+  if (timer) {
+    clearInterval(timer);
+    var interval = parseInt($("speed").value, 10) || 1600;
+    timer = setInterval(advance, interval);
+  }
+};
+
+$("copy-btn").onclick = function(){
+  var text = $("bp").textContent;
+  navigator.clipboard.writeText(text).then(function(){
+    var old = $("copy-btn").textContent;
+    $("copy-btn").textContent = "Copied!";
+    setTimeout(function(){ $("copy-btn").textContent = old; }, 1400);
+  });
+};
+
+FLOWS.forEach(function(f){
+  var b = document.createElement("button");
+  b.textContent = f.name;
+  b.dataset.id = f.id;
+  b.onclick = function(){ select(f.id); };
+  $("tabs").appendChild(b);
+});
+
+// Initialize on page load
+select("rule");
+</script>
+</body>
+</html>

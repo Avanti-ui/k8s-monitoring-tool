@@ -1,0 +1,13 @@
+{
+  "name": "k8s-monitoring-tool",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "infra:up": "docker compose -f docker-compose.local.yml up -d",
+    "infra:down": "docker compose -f docker-compose.local.yml down",
+    "backend:dev": "node scripts/run-backend.js --reload",
+    "backend:start": "node scripts/run-backend.js",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build"
+  }
+}
